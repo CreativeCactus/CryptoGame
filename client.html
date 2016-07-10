@@ -1,9 +1,7 @@
 <html>
     <head>
         <script src="/socket.io/socket.io.js"></script>
-        <link rel="stylesheet" href="/jqmcss">
         <script src="/jq"></script>
-        <script src="/jqm"></script>
     </head>
     <body>
         <canvas id="myCanvas" width="600" height="600" style="border:1px solid #d3d3d3;">
@@ -16,6 +14,7 @@
             SPRITES={},//map[id]{S} where S.img, S.size.x, S.size.y
             BOARD={},//.tiles is array of all tiles on the board .x is the width in tiles
             PLAYERS=[]
+            var canvas = $("#myCanvas")[0];
             
             //A somewhat unconventional way of handling input, but it must be extensible to modules
             var KEYBOARD = {}
@@ -24,12 +23,11 @@
             });
             $(window).keyup(function(e){delete KEYBOARD[e.keyCode]});
             
-            $(window).tap(function(e){
-                console.dir(e)
-                KEYBOARD.goto={x:e.x,y:e.y}
+            $(canvas).click(function(e){
+                alert(e.clientY)
+                KEYBOARD.goto={x:e.clientX,y:e.clientY}
             })
             
-            var canvas = $("#myCanvas")[0];
 
             canvas.style.backgroundColor = 'rgba(0, 0, 0, 0)';
             document.body.style.backgroundColor = '#111111';
