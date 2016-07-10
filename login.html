@@ -1,0 +1,32 @@
+<html>
+    <head>
+        <script src="https://code.jquery.com/jquery-3.0.0.min.js"></script>
+    </head>
+    <body>
+        Ay. We got game. U got name?
+        <input id="name" type="text" value="name"></input>
+        <input id="pass" type="text" value="pass"></input>
+        <button id="ok">Aight</button>
+        <script>
+            $('#ok').on('click',function(){
+                var n=$('#name')[0].value
+                var p=$('#pass')[0].value
+                
+                $.ajax({
+                    type: 'POST',
+                    data: JSON.stringify({
+                        name: n, 
+                        pass: p, 
+                        time:Date.now() 
+                    }),
+                    contentType: 'application/json',
+                    url: `/`,						
+                    success: function(data) {
+                        location.href+=data
+                    }
+               });
+                
+            })
+        </script>
+    </body>
+</html>

@@ -1,0 +1,173 @@
+<html>
+    <head>
+        <script src="/socket.io/socket.io.js"></script>
+        <link rel="stylesheet" href="/jqmcss">
+        <script src="/jq"></script>
+        <script src="/jqm"></script>
+    </head>
+    <body>
+        <canvas id="myCanvas" width="600" height="600" style="border:1px solid #d3d3d3;">
+            Your browser does not support the HTML5 canvas tag.
+        </canvas>
+        <input type="text"></input>
+        <script>
+            var sprite_scale=1.5, FPS=30,vframe=1;
+            var TILES={},
+            SPRITES={},//map[id]{S} where S.img, S.size.x, S.size.y
+            BOARD={},//.tiles is array of all tiles on the board .x is the width in tiles
+            PLAYERS=[]
+            
+            //A somewhat unconventional way of handling input, but it must be extensible to modules
+            var KEYBOARD = {}
+            $(window).keydown(function(e){
+                KEYBOARD[e.keyCode]=1
+            });
+            $(window).keyup(function(e){delete KEYBOARD[e.keyCode]});
+            
+            $(window).tap(function(e){
+                console.dir(e)
+                KEYBOARD.goto={x:e.x,y:e.y}
+            })
+            
+            var canvas = $("#myCanvas")[0];
+
+            canvas.style.backgroundColor = 'rgba(0, 0, 0, 0)';
+            document.body.style.backgroundColor = '#111111';
+            var ctx = canvas.getContext("2d");
+            ctx.fillStyle="#FFFFFF";
+            var Font="30px Verdana";
+            var socket = io();
+            var MY_PLAYER_ID=~~(Math.random()*(1<<16))
+            
+            socket.on('update', function(msg){
+                 PLAYERS=msg.players
+                 
+            });
+            
+            socket.on('map', function(msg){
+                console.dir({gotmap:msg})
+                PLAYERS=msg.players
+                BOARD=msg.map
+                //add the new tiles
+                for(var t in msg.tiles)if(msg.tiles.hasOwnProperty(t))
+                    TILES[t]=msg.tiles[t]
+                //add the new sprites
+                for(var s in msg.sprites)if(msg.sprites.hasOwnProperty(s)){
+                    SPRITES[s]=msg.sprites[s]
+                    LoadSpriteSheet(s)
+                }
+                
+            });
+            
+            function renderBoard(){
+                if(!BOARD.tiles){console.log(`Board could not be loaded!`); return}
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                var drawBoard=(function(){//just for some indented labels, the things we do..
+                    for (var t=0;t<BOARD.tiles.length;t++)
+                        drawTile(BOARD.tiles[t],t%BOARD.x,~~(t/BOARD.x))//WARN: ~~ limits to 2<<30                    
+                })();
+                
+                var drawPlayers=(function(){
+                    for (var p in PLAYERS)if(PLAYERS.hasOwnProperty(p)){
+                        draw(PLAYERS[p].sprite,PLAYERS[p].x*BOARD.xpx,PLAYERS[p].y*BOARD.ypx,PLAYERS[p].state)
+                        text(PLAYERS[p].name,PLAYERS[p].x*BOARD.xpx,PLAYERS[p].y*BOARD.ypx)   
+                    }              
+                })();
+                
+                // ctx.beginPath();
+                // ctx.strokeStyle="#00FF00";
+                // for (var i = 1; i <= TMAX/(100000*GuideLines); i++){
+                //     var x=XMargin+ 100000*GuideLines*i*XScale
+                //     ctx.moveTo(x, 0)
+                //     ctx.lineTo(x, canvas.height)
+                // }
+                // ctx.stroke();
+                //ctx.fillText(HUD, XMargin, 50); 
+                //////////          
+            }
+            
+            
+            //No ajax needed!
+            function LoadSpriteSheet(name){
+                SPRITES[name].img=new Image()
+                SPRITES[name].img.src="spritesheet/"+name
+            }
+            
+            
+            
+            
+            function drawTile(tile,x,y){
+                //check we have that TILE
+                var T=TILES[tile]
+                if(!T){console.log(`Unknown tile ${tile}`); return}
+                draw(T.sprite,x*BOARD.xpx,y*BOARD.ypx)
+            }
+            function draw(sprite,xpx,ypx,state){//state defaults 0
+                if(sprite.indexOf('.')>=0){state=sprite.split('.');sprite=state[0];state=state[1];}
+                S= SPRITES[sprite]
+                if(!S){console.log(`Unknown sprite ${sprite}`);return}
+                
+                STATE=S.states[state||0]
+                if(!STATE){console.log(`Unknown state ${state} of sprite ${sprite}`);return}
+                
+                var W=(STATE.size||{}).x || (S.size||{}).x || 16
+                var H=(STATE.size||{}).y || (S.size||{}).y || 16
+                var F=STATE.frames[vframe%STATE.frames.length]
+                ctx.drawImage(S.img, F.x*W, F.y*H, W, H, sprite_scale*xpx, sprite_scale*ypx, sprite_scale*W, sprite_scale*H);
+            }
+            function text(txt,xpx,ypx){
+                ctx.fillText(txt, sprite_scale*xpx, sprite_scale*ypx); 
+            }
+            
+            function init(){            
+                socket.emit('login', {pid:MY_PLAYER_ID});
+                socket.emit('getmap',{id:1,pid:MY_PLAYER_ID})
+                
+                setInterval( mainloop, 1000/FPS );
+                setInterval( function(){vframe++}, 250 );
+            }
+            init()
+            var LastCState="",CState={};
+            function mainloop(){
+                var CState=clean({
+                    pid:MY_PLAYER_ID,
+                    w:KEYBOARD[87],
+                    a:KEYBOARD[65],
+                    s:KEYBOARD[83],
+                    d:KEYBOARD[68],
+                    space:KEYBOARD[32]
+                })
+                anykey=CState.w||CState.a||CState.s||CState.d||CState.space
+                
+                //Control modules will load here
+                PlayerState=function(s){
+                    PLAYERS[MY_PLAYER_ID].state=s
+                }
+                if(PLAYERS[MY_PLAYER_ID]){
+                    if(CState.w)    PlayerState("wwalk")
+                    if(CState.a)    PlayerState("awalk")
+                    if(CState.s)    PlayerState("swalk")
+                    if(CState.d)    PlayerState("dwalk")     
+                    if(CState.space)PlayerState("spin")                
+                    if(!anykey) PlayerState(0)
+                }
+                CState.PState=PLAYERS[MY_PLAYER_ID].state
+                var SCState=JSON.stringify(CState)
+                if(SCState!=LastCState)socket.emit('ControlState', CState);
+                
+                renderBoard()
+                //stop on lose focus
+                LastCState=SCState
+            }
+            function clean(inp){
+                var o={}
+                for(var i in inp)
+                    if(inp.hasOwnProperty(i))
+                        if(inp[i]!=undefined)
+                           o[i]=inp[i] 
+                return o         
+            }
+        </script>
+    </body>
+</html>
