@@ -3,39 +3,51 @@
         <script src="/socket.io/socket.io.js"></script>
         <script src="/jq"></script>
     </head>
-    <body>
-        <canvas id="myCanvas" width="600" height="600" style="border:1px solid #d3d3d3;">
+    <body style="position:relative;">
+        <canvas id="myCanvas" style="border:0px;"  oncontextmenu="return RClick()">
             Your browser does not support the HTML5 canvas tag.
         </canvas>
-        <input type="text"></input>
         <script>
             var sprite_scale=1.5, FPS=30,vframe=1;
             var TILES={},
             SPRITES={},//map[id]{S} where S.img, S.size.x, S.size.y
             BOARD={},//.tiles is array of all tiles on the board .x is the width in tiles
             PLAYERS=[]
+            $("body").css("overflow", "hidden");
             var canvas = $("#myCanvas")[0];
+            var Font="30px Verdana";
+            var socket = io();
+            var MY_PLAYER_ID=~~(Math.random()*(1<<16))
             
             //A somewhat unconventional way of handling input, but it must be extensible to modules
             var KEYBOARD = {}
             $(window).keydown(function(e){
                 KEYBOARD[e.keyCode]=1
+                delete KEYBOARD.goto
             });
             $(window).keyup(function(e){delete KEYBOARD[e.keyCode]});
             
             $(canvas).click(function(e){
-                alert(e.clientY)
                 KEYBOARD.goto={x:e.clientX,y:e.clientY}
             })
             
+            function RClick(){
+                console.log("RC blocked");
+                KEYBOARD.goto={x:0,y:0}
+                return false;
+            }
+            function canvasResize(){
+                var can = $("#myCanvas")[0]
+                can.width = window.innerWidth;
+                can.height = window.innerHeight;
+            }
+            canvasResize()
+            $(window).bind("resize", canvasResize);
 
             canvas.style.backgroundColor = 'rgba(0, 0, 0, 0)';
             document.body.style.backgroundColor = '#111111';
             var ctx = canvas.getContext("2d");
             ctx.fillStyle="#FFFFFF";
-            var Font="30px Verdana";
-            var socket = io();
-            var MY_PLAYER_ID=~~(Math.random()*(1<<16))
             
             socket.on('update', function(msg){
                  PLAYERS=msg.players
@@ -128,12 +140,17 @@
             init()
             var LastCState="",CState={};
             function mainloop(){
+                var myx=PLAYERS[MY_PLAYER_ID].x*BOARD.xpx*sprite_scale
+                var myy=PLAYERS[MY_PLAYER_ID].y*BOARD.ypx*sprite_scale
+                var erx=BOARD.xpx*sprite_scale*0.1
+                var ery=BOARD.ypx*sprite_scale*0.1
+                var goto=KEYBOARD.goto||{}
                 var CState=clean({
                     pid:MY_PLAYER_ID,
-                    w:KEYBOARD[87],
-                    a:KEYBOARD[65],
-                    s:KEYBOARD[83],
-                    d:KEYBOARD[68],
+                    w:KEYBOARD[87]||goto.y<myy-ery,
+                    a:KEYBOARD[65]||goto.x<myx-erx,
+                    s:KEYBOARD[83]||goto.y>myy+ery,
+                    d:KEYBOARD[68]||goto.x>myx+erx,
                     space:KEYBOARD[32]
                 })
                 anykey=CState.w||CState.a||CState.s||CState.d||CState.space
@@ -148,7 +165,7 @@
                     if(CState.s)    PlayerState("swalk")
                     if(CState.d)    PlayerState("dwalk")     
                     if(CState.space)PlayerState("spin")                
-                    if(!anykey) PlayerState(0)
+                    if(!anykey){ PlayerState(0); delete KEYBOARD.goto    }
                 }
                 CState.PState=PLAYERS[MY_PLAYER_ID].state
                 var SCState=JSON.stringify(CState)

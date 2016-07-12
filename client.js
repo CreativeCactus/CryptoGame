@@ -78,7 +78,7 @@ io.on('connection', function(socket){
         delete PLAYERS[SOCKET_PLAYER_ID]
     })
     socket.on('login', function(msg){
-        console.dir({socket,msg})
+        
         PLAYERS[msg.pid]={sprite:"xmasgirl3",x:2,y:2.5}
         //PLAYERS[msg.pid]={sprite:"weddingguy02",x:2,y:2.5}
         SOCKET_PLAYER_ID=msg.pid
@@ -86,6 +86,7 @@ io.on('connection', function(socket){
     socket.on('ControlState', function(msg){
         //add auth here soon!
         pid=msg.pid
+        if(!PLAYERS[pid]){console.log(`No PLAYER: ${pid}`);return}
         delete msg.pid
         
         if(msg.PState!=undefined) {
