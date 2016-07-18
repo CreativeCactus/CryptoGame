@@ -33,7 +33,7 @@
             
             function RClick(){
                 console.log("RC blocked");
-                KEYBOARD.goto={x:0,y:0}
+                KEYBOARD.goto={x:50,y:50}
                 return false;
             }
             function canvasResize(){
@@ -131,7 +131,8 @@
             }
             
             function init(){            
-                socket.emit('login', {pid:MY_PLAYER_ID});
+                var urlid=location.href.split('=')[1].split('-')
+                socket.emit('login', {pid:MY_PLAYER_ID,sid:urlid[0],cid:urlid[1]});
                 socket.emit('getmap',{id:1,pid:MY_PLAYER_ID})
                 
                 setInterval( mainloop, 1000/FPS );
@@ -140,6 +141,7 @@
             init()
             var LastCState="",CState={};
             function mainloop(){
+                if(!PLAYERS[MY_PLAYER_ID])return
                 var myx=PLAYERS[MY_PLAYER_ID].x*BOARD.xpx*sprite_scale
                 var myy=PLAYERS[MY_PLAYER_ID].y*BOARD.ypx*sprite_scale
                 var erx=BOARD.xpx*sprite_scale*0.1

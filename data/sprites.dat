@@ -1,0 +1,18 @@
+{
+    "weddingguy02":{
+        "type":"char",
+        "size":{"x":32,"y":48}
+    },
+    "xmasgirl3":{
+        "type":"char",
+        "size":{"x":32,"y":48}
+    },
+    "candyshop":{
+        "type":"floor",
+        "size":{"x":32,"y":32},
+        "states":{
+            "grass1":{"frames":[{"x":0,"y":0}]},
+            "grass2":{"frames":[{"x":1,"y":0}],"size":{"x":32,"y":32}}
+        }
+    }
+}

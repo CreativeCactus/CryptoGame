@@ -1,12 +1,63 @@
 <html>
     <head>
         <script src="https://code.jquery.com/jquery-3.0.0.min.js"></script>
+        <style>
+            body {
+                text-align: center;   
+            }
+            .ghostly {
+                /* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#eaeaea+0,000000+100&1+0,0.33+100 */
+                background: -moz-radial-gradient(center, ellipse cover,  rgba(234,234,234,1) 0%, rgba(0,0,0,0.33) 100%); /* FF3.6-15 */
+                background: -webkit-radial-gradient(center, ellipse cover,  rgba(234,234,234,1) 0%,rgba(0,0,0,0.33) 100%); /* Chrome10-25,Safari5.1-6 */
+                background: radial-gradient(ellipse at center,  rgba(234,234,234,1) 0%,rgba(0,0,0,0.33) 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+                filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#eaeaea', endColorstr='#54000000',GradientType=1 ); /* IE6-9 fallback on horizontal gradient */
+            }
+            .center{
+                margin: 0;
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+            }
+            .panel{
+                max-width:32%;
+            }
+            .ipanel{
+                float: left;
+            }
+            .title{
+                letter-spacing: -61px;
+                font-size: 100;
+                line-height:0px;
+                margin: 33px;               
+                margin-left: -10px; 
+            }
+            #ok{
+                font-size: 38px;
+                float: right;
+            }
+            #name{
+                padding-top: 2px;   
+            }
+            #name, #pass{
+                float: left;    
+                font-family: "Lucida Sans Typewriter","Lucida Console",monaco,"Bitstream Vera Sans Mono",monospace;      
+                font-size: 16px;
+            }
+            
+        </style>
     </head>
-    <body>
-        Ay. We got game. U got name?
-        <input id="name" type="text" value="name"></input>
-        <input id="pass" type="text" value="pass"></input>
-        <button id="ok">Aight</button>
+    <body class="ghostly">
+        <div class="center panel">
+            <p class="title">ƒΔ</p>
+            <hr>
+            <div class="ipanel">
+                <input id="name" type="text" value="name"></input>
+                <br>
+                <input id="pass" type="text" value="pass"></input>
+            </div>
+            <button id="ok">✿</button>
+        </div>
         <script>
             $('#ok').on('click',function(){
                 var n=$('#name')[0].value

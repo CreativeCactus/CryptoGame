@@ -1,11 +1,11 @@
 {
     "id":1,
     "tiles":[
-        0,1,0,0,0,
-        1,0,1,1,1, 
-        0,0,1,1,1,
-        0,0,0,0,1,
-        0,0,0,0,0],
+        "candyshop.grass1","candyshop.grass2","candyshop.grass1","candyshop.grass1","candyshop.grass1",
+        "candyshop.grass2","candyshop.grass1","candyshop.grass2","candyshop.grass2","candyshop.grass2", 
+        "candyshop.grass1","candyshop.grass1","candyshop.grass2","candyshop.grass2","candyshop.grass2",
+        "candyshop.grass1","candyshop.grass1","candyshop.grass1","candyshop.grass1","candyshop.grass2",
+        "candyshop.grass1","candyshop.grass1","candyshop.grass1","candyshop.grass1","candyshop.grass1"],
     "width":5,
     "startx":1,
     "starty":1,
