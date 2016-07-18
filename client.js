@@ -221,32 +221,28 @@ function renderMap(id){
             map.x=~~Math.sqrt(~~(o.length*3/bs))//WARN: ~~ limits to 2<<30   
             
             
-            //Split the hash such that each chunk of 3 bits per char holds ≥ bs, 
-            // that is, enough bits to pick a tile
-            var rx=new RegExp(`.{${-~(bs/3)}}`,`g`) //-~ is ceil, by the way
-            var ts=o.match(rx)||[] //protect against match returning null in case s==""
+            //Split the hash into []char 
+            var ts=o.match(/./g)||[] //protect against match returning null in case s==""
             
-            //Turn each chunk into a value and populate the tile
+            //iterate and as enough bits accumulate, push a tile
             map.tiles=[]
+            var bits = 0;
             while(ts.length){
-                var v = ts.pop(), V=0, bin=0
-                for(var ch=0;ch<v.length;ch++){
-                    var N=(+v[ch])||0
-                    for(var i in "123") {
-                        V+=N & (1<< bin++)
-                        //a much more attractive method of pulling the bin'th bit
-                        
-                        //if we have enough bits, push a tile and reset counters
-                        if()
-                        
-                        
-                        
+                //get the value of this number
+                var v = ts.pop(), V=0, N=(+ts.pop())||0
+                for(var i in "123") {
+                    V+=((N >> i) % 2) << bits++
+                    //sadly the nice & method does not allow shifting bits into next tile
+                    
+                    //if we have enough bits, push a tile and reset counters
+                    if(bits>=bs){
+                        bits=0
+                        V=V%map.seed.tiles.length
+                        var tile=map.seed.tiles[V]
+                        V=0
+                        map.tiles.push(tile)
                     }
                 }
-                var tile = map.seed.tiles
-                V=V%tile.length
-                tile=tile[V]
-                map.tiles.push(tile)
             }
             //We're (finally) done here.        
         break;
