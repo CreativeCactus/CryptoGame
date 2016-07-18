@@ -220,27 +220,33 @@ function renderMap(id){
             while(bs<30 && Math.pow(2,bs)<map.seed.tiles.length)bs++;
             map.x=~~Math.sqrt(~~(o.length*3/bs))//WARN: ~~ limits to 2<<30   
             
+            console.log('ol'+o.length)
             
             //Split the hash into []char 
             var ts=o.match(/./g)||[] //protect against match returning null in case s==""
             
+            console.dir('ts'+ts)
             //iterate and as enough bits accumulate, push a tile
             map.tiles=[]
             var bits = 0;
+            console.log('bs'+bs)
+            gen:
             while(ts.length){
                 //get the value of this number
-                var v = ts.pop(), V=0, N=(+ts.pop())||0
-                for(var i in "123") {
+                var V=0, N=(+ts.pop())||0
+                for(var i=0;i<3;i++) {//can we use hasOwnProperty on string? it seems to inherit map from obj proto
                     V+=((N >> i) % 2) << bits++
                     //sadly the nice & method does not allow shifting bits into next tile
-                    
+                    console.log(V)
                     //if we have enough bits, push a tile and reset counters
                     if(bits>=bs){
                         bits=0
                         V=V%map.seed.tiles.length
                         var tile=map.seed.tiles[V]
+                        console.log(tile+";"+ts.length+','+i)
                         V=0
                         map.tiles.push(tile)
+                        if(map.tiles.length>=(map.x*map.x))break gen;
                     }
                 }
             }
