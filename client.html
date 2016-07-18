@@ -114,7 +114,8 @@
                 draw(T.sprite,x*BOARD.xpx,y*BOARD.ypx)
             }
             function draw(sprite,xpx,ypx,state){//state defaults 0
-                if(sprite.indexOf('.')>=0){state=sprite.split('.');sprite=state[0];state=state[1];}
+                //use >, not ≥, to avoid index OOB
+                if(sprite.indexOf('.')>0){state=sprite.split('.');sprite=state[0];state=state[1];}
                 S= SPRITES[sprite]
                 if(!S){console.log(`Unknown sprite ${sprite}`);return}
                 

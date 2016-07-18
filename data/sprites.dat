@@ -12,7 +12,14 @@
         "size":{"x":32,"y":32},
         "states":{
             "grass1":{"frames":[{"x":0,"y":0}]},
-            "grass2":{"frames":[{"x":1,"y":0}],"size":{"x":32,"y":32}}
+            "grass2":{"frames":[{"x":1,"y":0}],"size":{"x":32,"y":32}},
+            "tilegreen1":{"frames":[{"x":2,"y":0}]},
+            "tilegreen2":{"frames":[{"x":4,"y":0}]},
+            "tilegreen3":{"frames":[{"x":3,"y":0}]},
+            "tilewhite1":{"frames":[{"x":3,"y":1}]},
+            "tilewhite2":{"frames":[{"x":1,"y":1}]},
+            "tilewhite3":{"frames":[{"x":2,"y":1}]}
+            
         }
     }
 }

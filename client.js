@@ -162,7 +162,7 @@ io.on('connection', function(socket){
         //Check pid has permission for that map id
         
         
-        var map = jf.readFileSync(cwd+`/data/${msg.id}.map`)
+        var map = renderMap(msg.id)
         
         var needTiles=[]
         for(var i in map.tiles)if(map.tiles.hasOwnProperty(i)){
@@ -198,7 +198,59 @@ io.on('connection', function(socket){
     });
 })   
 
-
+function renderMap(id){
+    var map=jf.readFileSync(cwd+`/data/${id}.map`)
+    
+    switch(map.seed.type){
+        case "generate":
+            //expand the seed out to a nice size
+            fasthash=(s)=>{
+                var h = 5381,l = s.length
+                while(l) h = (h * 33) ^ s.charCodeAt(--l)
+                return h >>> 0
+            }
+            var o=''
+            for(var i in map.seed.value)
+                o+=fasthash(map.seed.value[i]+i)
+            
+            //determine a square map within the result
+            //each character will be 0-9, so we will %8 for our 3 bits per char 
+            //to pick from the seed tiles we will need 2^bits≥n where n seed tiles available
+            var bs=1//number of bits per tile
+            while(bs<30 && Math.pow(2,bs)<map.seed.tiles.length)bs++;
+            map.x=~~Math.sqrt(~~(o.length*3/bs))//WARN: ~~ limits to 2<<30   
+            
+            
+            //Split the hash such that each chunk of 3 bits per char holds ≥ bs, 
+            // that is, enough bits to pick a tile
+            var rx=new RegExp(`.{${-~(bs/3)}}`,`g`) //-~ is ceil, by the way
+            var ts=o.match(rx)||[] //protect against match returning null in case s==""
+            
+            //Turn each chunk into a value and populate the tile
+            map.tiles=[]
+            while(ts.length){
+                var v = ts.pop(), V=0, bin=0
+                for(var ch=0;ch<v.length;ch++){
+                    var N=(+v[ch])||0
+                    for(var i in "123") 
+                        V+=((N>>bin)%2) << bin++
+                        //+=((bits after bit'th bit of N) only LSB) * 2^bit; bit++
+                        //isolate the bit'th bit and add it
+                }
+                var tile = map.seed.tiles
+                V=V%tile.length
+                tile=tile[V]
+                map.tiles.push(tile)
+            }
+            //We're (finally) done here.        
+        break;
+        default:
+            console.log("Defaulting on unknown map seed type: "+id);
+            return map;
+    }
+    
+    return map
+}
 function LeaveAll(sock){
        var rooms = sock.rooms
        for(var room in rooms) {
