@@ -232,10 +232,16 @@ function renderMap(id){
                 var v = ts.pop(), V=0, bin=0
                 for(var ch=0;ch<v.length;ch++){
                     var N=(+v[ch])||0
-                    for(var i in "123") 
-                        V+=((N>>bin)%2) << bin++
-                        //+=((bits after bit'th bit of N) only LSB) * 2^bit; bit++
-                        //isolate the bit'th bit and add it
+                    for(var i in "123") {
+                        V+=N & (1<< bin++)
+                        //a much more attractive method of pulling the bin'th bit
+                        
+                        //if we have enough bits, push a tile and reset counters
+                        if()
+                        
+                        
+                        
+                    }
                 }
                 var tile = map.seed.tiles
                 V=V%tile.length
