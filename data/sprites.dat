@@ -18,8 +18,13 @@
             "tilegreen3":{"frames":[{"x":3,"y":0}]},
             "tilewhite1":{"frames":[{"x":3,"y":1}]},
             "tilewhite2":{"frames":[{"x":1,"y":1}]},
-            "tilewhite3":{"frames":[{"x":2,"y":1}]}
-            
+            "tilewhite3":{"frames":[{"x":2,"y":1}]},
+            "box":{"frames":[{"x":2,"y":7}]},
+            "pile1":{"frames":[{"x":1,"y":8}]},
+            "pile2":{"frames":[{"x":2,"y":8}]},
+            "pile3":{"frames":[{"x":3,"y":8}]},
+            "pile4":{"frames":[{"x":4,"y":8}]},
+            "pile5":{"frames":[{"x":5,"y":8}]}            
         }
     }
 }

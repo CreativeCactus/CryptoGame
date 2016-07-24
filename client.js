@@ -1,21 +1,34 @@
 var cwd=process.cwd()
 var jf = require('jsonfile');
+var fs = require('fs');
 var mtime = require('microtime.js')
 var bodyParser  = require('body-parser');
+
 var app = require('express')();
+var mw = require('express').Router();//require() is cached, by the way.
+
 var server = require('http').createServer(app);
 var io = require('socket.io')(server);
 var bcrypt = require('bcrypt');
+
 app.use(bodyParser.json())
+app.use((req,res,next)=>{/*logging*/next();})
+app.use(mw)
+//404 anything that misses the mw router, 
+//all late-comer mw routes will be before this handler
+app.use((req,res)=>{res.send("☹");})
 
 var SERVER_KEY
 bcrypt.hash(Date.now()+"myServerKey",8,(e,hash)=>{
     if(!e){ SERVER_KEY=hash; return }
-    
     console.log(`Could not init server key, BCrypt error: ${JSON.stringify(e)}`)
     process.exit()
 })
 
+PORT=8080
+FPS=30
+PLAYERS = {}
+var playerMask={state:1,sprite:1,x:1,y:1,name:1}
 var DEFAULT_PLAYER_SPRITE="xmasgirl3"
 var default_player_states={
     0:{frames:[{x:0,y:0}]},//idle
@@ -28,17 +41,16 @@ var default_player_states={
 var SPRITES=jf.readFileSync(cwd+`/data/sprites.dat`)
 var USERS = jf.readFileSync(cwd+`/data/users.dat`)
 function init(){
-    SPRITES=SPRITES.map((v,i,a)=>{if(v.type=='char')v.states=v.states||default_player_states; return v;})
+    SPRITES=SPRITES.map((v,i,a)=>{
+        if(v.type=='char')v.states=v.states||default_player_states; 
+        return v;
+    })
 }
-PORT=8080
-FPS=30
-PLAYERS = {}
-var playerMask={state:1,sprite:1,x:1,y:1,name:1}
 server.listen(PORT,()=>{ console.log(`http://127.0.0.1:${PORT}/`) });
 
-SESSIONS={}// TODO: cull older than 1 days, prevent targetted overwrite
+SESSIONS={}// TODO: cull older than 1 days
 
-app.get("/welcome",(req,res)=>{
+mw.get("/welcome",(req,res)=>{
     //as convoluted this is, it makes the url very difficult to interpret at first glance
     var sid
     for(var i in req.query)if(req.query.hasOwnProperty(i)){
@@ -51,13 +63,9 @@ app.get("/welcome",(req,res)=>{
     //request.body.time
 	res.sendFile(cwd+'/client.html')	
 })
-app.get("/",(req,res)=>{
-	res.sendFile(cwd+`/login.html`)	
-})
-app.get("/signup",(req,res)=>{
-	res.sendFile(cwd+'/signup.html')	
-})
-app.post("/",(req,res)=>{
+mw.get("/",(req,res)=>{	    res.sendFile(cwd+`/login.html`)	    })
+mw.get("/signup",(req,res)=>{	res.sendFile(cwd+'/signup.html')	})
+mw.post("/",(req,res)=>{
     if(!USERS[req.body.name]){//user does not exist. create an account and ask which sprite to use
         bcrypt.hash(req.body.pass, 5, function(err, hash) {
             if(err){res.send(`Unexpected error.`);console.log(`BCEE1:${JSON.stringify(err)}`);return;}
@@ -80,6 +88,18 @@ app.post("/",(req,res)=>{
         })
     });
 })
+mw.get("/sprite/:id",(req,res)=>{
+    var s = jf.readFileSync(process.cwd()+`/data/${req.params.id}.sprite`);
+    map.players=where(PLAYERS,{map:map.id})||[]
+	res.send(JSON.stringify(map))	
+})
+mw.get("/spritesheet/:id",(req,res)=>{
+	res.sendFile(process.cwd()+`/data/${req.params.id}.png`)	
+})
+mw.get("/jq",      (req,res)=>{res.sendFile(cwd+'/jquery-3.0.0.min.js')    })
+mw.get("/jqm",     (req,res)=>{res.sendFile(cwd+'/jquery.mobile.min.js')   })
+mw.get("/jqmcss",  (req,res)=>{res.sendFile(cwd+'/jquery.mobile.min.css')  })
+
 
 setInterval( mainloop, 1000/FPS );
 function mainloop(){
@@ -114,16 +134,51 @@ function UpdatePlayers(){
 }
 
 
-
+//TODO: document the protocol as it is now sufficiently complicated
 io.on('connection', function(socket){
     var SOCKET_PLAYER_ID
     var PLAYER_SPRITE
     var USER
     var SESSION
+    var FILES_ACCESSED=[]
     
     socket.on('disconnect', function(msg){
         console.log(`PLAYER ${SOCKET_PLAYER_ID} QUIT`)
         delete PLAYERS[SOCKET_PLAYER_ID]
+    })
+    socket.on('filedn', function(msg){
+        if(!SOCKET_PLAYER_ID)return;
+        //check user permissions later...
+        
+        var P=PLAYERS[SOCKET_PLAYER_ID]
+        var store = cwd+`/data/${P.map}.objects.dat`        
+        var data = readFileSafe(store,{})[msg.obj]
+        if(!data)return
+        
+        var aid=grid()
+        FILES_ACCESSED[aid]=data.data
+        
+        
+    })
+    socket.on('fileup', function(file){
+        if(!SOCKET_PLAYER_ID)return;
+        //{file:{name:file.name,type:file.type,data:event.target.result},pid:MY_PLAYER_ID}
+        //check SOCKET_PLAYER_ID has upload rights to this map
+        
+        var P=PLAYERS[SOCKET_PLAYER_ID]
+        var store = cwd+`/data/${P.map}.objects.dat`
+        
+        var data = readFileSafe(store,{})
+        var oid=grid()
+        
+        file.x=P.x
+        file.y=P.y
+        file.sprite="candyshop.box"
+        
+        data[oid]=file
+        jf.writeFileSync(store,data)
+        console.log(`Added file:${file.name} as ${oid} to map ${P.map}`)
+        
     })
     socket.on('login', function(msg){    
         msg.sid//is the session id which has the name for USERS[name]
@@ -134,23 +189,24 @@ io.on('connection', function(socket){
             
             SESSION=SESSIONS[msg.sid]
             USER=USERS[SESSION.name]
-            PLAYERS[msg.pid]={name:SESSION.name,sprite:USER.sprite||DEFAULT_PLAYER_SPRITE,x:2,y:2.5}
-            //PLAYERS[msg.pid]={sprite:"weddingguy02",x:2,y:2.5}
             SOCKET_PLAYER_ID=msg.pid
+            PLAYERS[SOCKET_PLAYER_ID]={
+                sid:msg.sid,
+                name:SESSION.name,
+                sprite:USER.sprite||DEFAULT_PLAYER_SPRITE,
+                x:2,y:2.5}
         })
     })
     socket.on('ControlState', function(msg){
-        //add auth here soon!
-        pid=msg.pid
-        if(!PLAYERS[pid]){console.log(`No PLAYER: ${pid}`);return}
-        delete msg.pid
+        if(!SOCKET_PLAYER_ID)return;
+        if(!PLAYERS[SOCKET_PLAYER_ID]){console.log(`No PLAYER: ${SOCKET_PLAYER_ID}`);return}
         
         if(msg.PState!=undefined) {
-            PLAYERS[pid].state=msg.PState
+            PLAYERS[SOCKET_PLAYER_ID].state=msg.PState
             delete msg.PState
         }
         
-        PLAYERS[pid].CS=msg
+        PLAYERS[SOCKET_PLAYER_ID].CS=msg
     })
     
     //this will send the map object to the client,
@@ -158,6 +214,7 @@ io.on('connection', function(socket){
     //board, including players and npc
     /// Load the file defining the map itself
     socket.on('getmap', function(msg){
+        if(!SOCKET_PLAYER_ID)return;
         
         //Check pid has permission for that map id
         
@@ -175,7 +232,7 @@ io.on('connection', function(socket){
             map.tiles[i]=needTiles.length-1
         }
         
-        PLAYERS[msg.pid].map=map.id
+        PLAYERS[SOCKET_PLAYER_ID].map=map.id
         LeaveAll(socket)
         socket.join(`map${map.id}`)
         
@@ -194,7 +251,9 @@ io.on('connection', function(socket){
         //     1:{sprite:'candyshop.grass2'}
         // }
         
-        socket.emit('map',{map,players,sprites,tiles})
+        var objects = readFileSafe(cwd+`/data/${map.id}.objects.dat`,{})
+        
+        socket.emit('map',{hard:true,map,players,sprites,tiles,objects})
     });
 })   
 
@@ -202,7 +261,7 @@ function renderMap(id){
     var map=jf.readFileSync(cwd+`/data/${id}.map`)
     
     switch(map.seed.type){
-        case "generate":
+        case "generate"://This seed is for completely random noise deterministically generated by the seed
             //expand the seed out to a nice size
             fasthash=(s)=>{
                 var h = 5381,l = s.length
@@ -211,7 +270,8 @@ function renderMap(id){
             }
             var o=''
             for(var i in map.seed.value)
-                o+=fasthash(map.seed.value[i]+i)
+                for(var n=0;n<i;n++)
+                    o+=fasthash(map.seed.value[i]+i+n)
             
             //determine a square map within the result
             //each character will be 0-9, so we will %8 for our 3 bits per char 
@@ -220,33 +280,26 @@ function renderMap(id){
             while(bs<30 && Math.pow(2,bs)<map.seed.tiles.length)bs++;
             map.x=~~Math.sqrt(~~(o.length*3/bs))//WARN: ~~ limits to 2<<30   
             
-            console.log('ol'+o.length)
-            
             //Split the hash into []char 
             var ts=o.match(/./g)||[] //protect against match returning null in case s==""
             
-            console.dir('ts'+ts)
             //iterate and as enough bits accumulate, push a tile
             map.tiles=[]
             var bits = 0;
-            console.log('bs'+bs)
-            gen:
             while(ts.length){
                 //get the value of this number
                 var V=0, N=(+ts.pop())||0
                 for(var i=0;i<3;i++) {//can we use hasOwnProperty on string? it seems to inherit map from obj proto
                     V+=((N >> i) % 2) << bits++
                     //sadly the nice & method does not allow shifting bits into next tile
-                    console.log(V)
                     //if we have enough bits, push a tile and reset counters
                     if(bits>=bs){
                         bits=0
                         V=V%map.seed.tiles.length
                         var tile=map.seed.tiles[V]
-                        console.log(tile+";"+ts.length+','+i)
                         V=0
                         map.tiles.push(tile)
-                        if(map.tiles.length>=(map.x*map.x))break gen;
+                        if(map.tiles.length>=(map.x*map.x)){ts=[];break;}//rather than break gen;
                     }
                 }
             }
@@ -268,21 +321,17 @@ function LeaveAll(sock){
 
 
 
-app.get("/sprite/:id",(req,res)=>{
-    var s = jf.readFileSync(process.cwd()+`/data/${req.params.id}.sprite`);
-    map.players=where(PLAYERS,{map:map.id})||[]
-	res.send(JSON.stringify(map))	
-})
-app.get("/spritesheet/:id",(req,res)=>{
-	res.sendFile(process.cwd()+`/data/${req.params.id}.png`)	
-})
-app.get("/jq",      (req,res)=>{res.sendFile(cwd+'/jquery-3.0.0.min.js')    })
-app.get("/jqm",     (req,res)=>{res.sendFile(cwd+'/jquery.mobile.min.js')   })
-app.get("/jqmcss",  (req,res)=>{res.sendFile(cwd+'/jquery.mobile.min.css')  })
-
 /*
     helpers
 */
+
+function fileExists(filePath){
+    try {
+        return fs.statSync(filePath).isFile();
+    } catch (err) {
+        return false;
+    }
+}
 
 //takes an array of objects and an object to match
 function where(list, crit){
@@ -321,8 +370,10 @@ function varies(o,x){
     return out
 }
 //random id
-function grid(){
-    return ~~(Math.random()*(1<<24))
+function grid(){    return ~~(Math.random()*(1<<24))    }
+
+function readFileSafe(p,elseval){
+    return fileExists(p)?jf.readFileSync(p):elseval
 }
 
 init()
