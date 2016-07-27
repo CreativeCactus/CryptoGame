@@ -84,6 +84,7 @@ mw.post("/",(req,res)=>{
         
         bcrypt.hash(sid+SERVER_KEY, 5, function(err, hash) {
             if(err){res.send(`Unexpected error.`);console.log(`BCEE2:${JSON.stringify(err)}`);return;}
+            hash=hash.replace('$2a$','')
             res.send(`welcome?${grid()}=${sid}-${hash}`)
         })
     });
@@ -99,15 +100,18 @@ mw.get("/spritesheet/:id",(req,res)=>{
 mw.get("/jq",      (req,res)=>{res.sendFile(cwd+'/jquery-3.0.0.min.js')    })
 mw.get("/jqm",     (req,res)=>{res.sendFile(cwd+'/jquery.mobile.min.js')   })
 mw.get("/jqmcss",  (req,res)=>{res.sendFile(cwd+'/jquery.mobile.min.css')  })
-
+mw.get("/data/:aid/:pid",(req,res,next)=>{
+    file=PRESIGNED_URL[req.params.aid]
+    if(!file || file.pid!=req.params.pid)return next();
+    res.send(file.data)
+})
 
 setInterval( mainloop, 1000/FPS );
 function mainloop(){
     UpdatePlayers()
 }
-function GetSpriteForPlayer(name,pass){
-    
-}
+
+var last_players=""
 function UpdatePlayers(){
     loop:
     for(var p in PLAYERS)if(PLAYERS.hasOwnProperty(p)){
@@ -129,36 +133,26 @@ function UpdatePlayers(){
         maps[m].map((v,i,a)=>{var id=v._id;delete v._id; LocalPlayers[id]=v})
         
     }
-         
-    io.emit("update",{players})  
+    var str_players=JSON.stringify(players)
+    if(str_players!=last_players){
+        io.emit("update",{players}) 
+        last_players= str_players
+    }
 }
 
+var PRESIGNED_URL={}
 
 //TODO: document the protocol as it is now sufficiently complicated
 io.on('connection', function(socket){
     var SOCKET_PLAYER_ID
+    var PLAYER_CID
     var PLAYER_SPRITE
     var USER
     var SESSION
-    var FILES_ACCESSED=[]
     
     socket.on('disconnect', function(msg){
         console.log(`PLAYER ${SOCKET_PLAYER_ID} QUIT`)
         delete PLAYERS[SOCKET_PLAYER_ID]
-    })
-    socket.on('filedn', function(msg){
-        if(!SOCKET_PLAYER_ID)return;
-        //check user permissions later...
-        
-        var P=PLAYERS[SOCKET_PLAYER_ID]
-        var store = cwd+`/data/${P.map}.objects.dat`        
-        var data = readFileSafe(store,{})[msg.obj]
-        if(!data)return
-        
-        var aid=grid()
-        FILES_ACCESSED[aid]=data.data
-        
-        
     })
     socket.on('fileup', function(file){
         if(!SOCKET_PLAYER_ID)return;
@@ -168,22 +162,26 @@ io.on('connection', function(socket){
         var P=PLAYERS[SOCKET_PLAYER_ID]
         var store = cwd+`/data/${P.map}.objects.dat`
         
-        var data = readFileSafe(store,{})
+        var objects = readFileSafe(store,{})
         var oid=grid()
         
         file.x=P.x
         file.y=P.y
+        file.w=1
+        file.h=1
         file.sprite="candyshop.box"
         
-        data[oid]=file
-        jf.writeFileSync(store,data)
+        objects[oid]=file
+        jf.writeFileSync(store,objects)
         console.log(`Added file:${file.name} as ${oid} to map ${P.map}`)
+        
+        io.emit('map',{hard:false,objects})
         
     })
     socket.on('login', function(msg){    
-        msg.sid//is the session id which has the name for USERS[name]
-        msg.cid//is the salted bcrypt thereof
-        bcrypt.compare(msg.sid+SERVER_KEY,msg.cid,(err,match)=>{
+        //msg.sid//is the session id which has the name for USERS[name]
+        PLAYER_CID=msg.cid//is the salted bcrypt thereof
+        bcrypt.compare(msg.sid+SERVER_KEY,'$2a$'+msg.cid,(err,match)=>{
             if(err){console.log(`BCCE2:${JSON.stringify(err)}`);return;}
             if(!match){console.log(`Suspected bad login: ${msg}`);return}
             
@@ -199,14 +197,50 @@ io.on('connection', function(socket){
     })
     socket.on('ControlState', function(msg){
         if(!SOCKET_PLAYER_ID)return;
-        if(!PLAYERS[SOCKET_PLAYER_ID]){console.log(`No PLAYER: ${SOCKET_PLAYER_ID}`);return}
+        var P=PLAYERS[SOCKET_PLAYER_ID]
+        if(!P){console.log(`No PLAYER: ${SOCKET_PLAYER_ID}`);return}
         
         if(msg.PState!=undefined) {
-            PLAYERS[SOCKET_PLAYER_ID].state=msg.PState
+            P.state=msg.PState
             delete msg.PState
         }
-        
+                
         PLAYERS[SOCKET_PLAYER_ID].CS=msg
+        
+        
+        /*
+            Download event trigger
+        */
+        if(msg.space){//user is holding action key
+            //Let's see if there is anything there for the user to interact with
+            var objects = readFileSafe(cwd+`/data/${P.map}.objects.dat`,{})
+            var O
+            for(var o in objects)if(objects.hasOwnProperty(o)){
+                O =objects[o] 
+                if(O.x<=P.x && 
+                    O.x+O.w>=P.x && 
+                    O.y<=P.y && 
+                    O.y+O.h>=P.y) break;
+                O=undefined
+            }
+            if(O){//user is over an actionable object
+                console.log('obj')
+                //check user permissions later...
+                setTimeout(()=>{//check back in 2 sec
+                    console.log('still holding')
+                    if(!PLAYERS[SOCKET_PLAYER_ID].CS.space)return;
+                    //user has been holding action key for a while!
+                    var aid=grid()+''+grid()+''+grid()
+                    PRESIGNED_URL[aid]={data:O.data,pid:SOCKET_PLAYER_ID}                
+                    socket.emit('file4u',{url:`/data/${aid}/???`})
+                    setTimeout(()=>{//remove the presigned link a while later
+                        delete PRESIGNED_URL[aid]
+                    },10000)                    
+                },2000)
+            } else console.log('no obj')
+        }
+        
+        
     })
     
     //this will send the map object to the client,

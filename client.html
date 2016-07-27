@@ -56,6 +56,10 @@
                  
             });
             
+            socket.on('file4u', function(msg){
+                var url=msg.url.replace('???',MY_PLAYER_ID)
+                $("<a>").attr("href", url).attr("target", "_blank")[0].click();
+            });
             socket.on('map', function(msg){
                 console.dir({gotmap:msg})
                 if(msg.hard||msg.players) PLAYERS=msg.players
