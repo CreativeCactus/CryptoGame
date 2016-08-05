@@ -1,13 +1,16 @@
 {
     "weddingguy02":{
+        "file":"weddingguy02",
         "type":"char",
         "size":{"x":32,"y":48}
     },
     "xmasgirl3":{
+        "file":"xmasgirl3",
         "type":"char",
         "size":{"x":32,"y":48}
     },
-    "candyshop":{
+    "cs":{
+        "file":"candyshop",
         "type":"floor",
         "size":{"x":32,"y":32},
         "states":{
@@ -18,13 +21,40 @@
             "tilegreen3":{"frames":[{"x":3,"y":0}]},
             "tilewhite1":{"frames":[{"x":3,"y":1}]},
             "tilewhite2":{"frames":[{"x":1,"y":1}]},
-            "tilewhite3":{"frames":[{"x":2,"y":1}]},
+            "tilewhite3":{"frames":[{"x":2,"y":1}]}  
+        }
+    },
+    "csobj":{
+        "file":"candyshop",
+        "type":"object",
+        "size":{"x":32,"y":32},
+        "states":{
             "box":{"frames":[{"x":2,"y":7}]},
             "pile1":{"frames":[{"x":1,"y":8}]},
             "pile2":{"frames":[{"x":2,"y":8}]},
             "pile3":{"frames":[{"x":3,"y":8}]},
             "pile4":{"frames":[{"x":4,"y":8}]},
-            "pile5":{"frames":[{"x":5,"y":8}]}            
-        }
+            "pile5":{"frames":[{"x":5,"y":8}]}   
+        }       
+    },
+    "coin":{
+        "file":"gcoin",
+        "type":"object",
+        "size":{"x":32,"y":32},
+        "scale":{"x":0.5,"y":0.5},
+        "states":{ 
+            "spin":{
+                "frames":[
+                    {"x":0,"y":0},
+                    {"x":1,"y":0},
+                    {"x":2,"y":0},
+                    {"x":3,"y":0},
+                    {"x":4,"y":0},
+                    {"x":5,"y":0},
+                    {"x":6,"y":0},
+                    {"x":7,"y":0}
+                ]
+            }
+        }       
     }
 }

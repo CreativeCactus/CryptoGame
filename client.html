@@ -13,7 +13,9 @@
             SPRITES={},//map[id]{S} where S.img, S.size.x, S.size.y
             BOARD={},//.tiles is array of all tiles on the board .x is the width in tiles
             PLAYERS=[],
-            OBJECTS={}
+            OBJECTS={},
+            PRIVATE={}
+            
             $("body").css("overflow", "hidden");
             var canvas = $("#myCanvas")[0];
             var Font="30px Verdana";
@@ -21,14 +23,12 @@
             var MY_PLAYER_ID=~~(Math.random()*(1<<16))
             var CLIENT={xoff:0,yoff:0,canvas}
             
-            //A somewhat unconventional way of handling input, but it must be extensible to modules
             var KEYBOARD = {}
             $(window).keydown(function(e){
                 KEYBOARD[e.keyCode]=1
                 delete KEYBOARD.goto
             });
             $(window).keyup(function(e){delete KEYBOARD[e.keyCode]});
-            
             $(canvas).click(function(e){
                 KEYBOARD.goto={x:CLIENT.xoff+e.clientX,y:CLIENT.yoff+e.clientY}
             })
@@ -53,12 +53,26 @@
             
             socket.on('update', function(msg){
                  PLAYERS=msg.players
-                 
             });
             
             socket.on('file4u', function(msg){
                 var url=msg.url.replace('???',MY_PLAYER_ID)
-                $("<a>").attr("href", url).attr("target", "_blank")[0].click();
+                delete KEYBOARD[32]
+                switch(msg.type){
+                    case 'image/png':                    
+                        $.get( url, function( data ) {
+                            var imageObj = new Image()
+                            imageObj.src = data
+                            pid=bigrid()
+                            PRIVATE[pid]={x:msg.x,y:msg.y,type:"image",img:imageObj}
+                            setTimeout(()=>{
+                                delete PRIVATE[pid]
+                            },10000)
+                        });
+                        break;
+                    default:
+                        $("<a>").attr("href", url).attr("target", "_blank")[0].click();
+                }
             });
             socket.on('map', function(msg){
                 console.dir({gotmap:msg})
@@ -77,8 +91,9 @@
             });
             
             function renderBoard(){
-                if(!BOARD.tiles){console.log(`Board could not be loaded!`); return}
+                if(!BOARD.tiles){console.log(`Board could not be loaded - should try again in 2s!`); return}
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                var me=PLAYERS[MY_PLAYER_ID]
                 
                 var drawBoard=(function(){//just for some indented labels, the things we do..
                     for (var t=0;t<BOARD.tiles.length;t++)
@@ -90,17 +105,30 @@
                     var O=OBJECTS[o]
                     draw(O.sprite,O.x*BOARD.xpx,O.y*BOARD.ypx)   
                 }
+                //Draw Private messages
+                for (var o in PRIVATE)if(PRIVATE.hasOwnProperty(o)){
+                    var O=PRIVATE[o]
+                    switch(O.type){
+                        case "image":
+                            ctx.drawImage(O.img, O.x, O.y, 600, 600)
+                            break;
+                        default:
+                            draw(O.sprite,O.x*BOARD.xpx,O.y*BOARD.ypx)   
+                    }
+                }
                 //Draw Players
                 for (var p in PLAYERS)if(PLAYERS.hasOwnProperty(p)){
                     var P=PLAYERS[p]
-                    draw(P.sprite,P.x*BOARD.xpx,P.y*BOARD.ypx,P.state)
+                    var alpha = p==MY_PLAYER_ID? //set the alpha of the player we are drawing
+                        ( KEYBOARD[16]              ?0.6:1):    //if the player is me, it depends on SHIFT key
+                        (!KEYBOARD[16]&&near(P,me,1)?0.5:1);    //if not me, it depends on proximity to me if im not SHIFTing
+                    draw(P.sprite,P.x*BOARD.xpx,P.y*BOARD.ypx,P.state,alpha)
                     text((new Array(P.name.length+1)).join("█"),P.x*BOARD.xpx,P.y*BOARD.ypx,'black')   
                     text(P.name,P.x*BOARD.xpx,P.y*BOARD.ypx)   
                     if(p==MY_PLAYER_ID) text("┼",P.x*BOARD.xpx-3,P.y*BOARD.ypx-5,'lightgreen')   
                 }  
                 
                 //scrolling
-                var me=PLAYERS[MY_PLAYER_ID]
                 meX=me.x*BOARD.xpx*sprite_scale
                 meY=me.y*BOARD.ypx*sprite_scale
                 
@@ -134,7 +162,7 @@
                 if(!T){console.log(`Unknown tile ${tile}`); return}
                 draw(T.sprite,x*BOARD.xpx,y*BOARD.ypx)
             }
-            function draw(sprite,xpx,ypx,state){//state defaults 0
+            function draw(sprite,xpx,ypx,state,alpha){//state defaults 0
                 //use >, not ≥, to avoid index OOB
                 if(sprite.indexOf('.')>0){state=sprite.split('.');sprite=state[0];state=state[1];}
                 S= SPRITES[sprite]
@@ -145,8 +173,20 @@
                 
                 var W=(STATE.size||{}).x || (S.size||{}).x || 16
                 var H=(STATE.size||{}).y || (S.size||{}).y || 16
+                var xs=(STATE.scale||{}).x || (S.scale||{}).x || 1
+                var ys=(STATE.scale||{}).y || (S.scale||{}).y || 1
                 var F=STATE.frames[vframe%STATE.frames.length]
-                ctx.drawImage(S.img, F.x*W, F.y*H, W, H, sprite_scale*xpx-CLIENT.xoff, sprite_scale*ypx-CLIENT.yoff, sprite_scale*W, sprite_scale*H);
+                
+                var drawImage=()=>{ctx.drawImage(S.img, F.x*W, F.y*H, W, H, sprite_scale*xpx-CLIENT.xoff, sprite_scale*ypx-CLIENT.yoff, sprite_scale*W*xs, sprite_scale*H*ys);}
+                alpha=alpha||1
+                if(alpha<1){
+                    ctx.save()
+                    ctx.globalAlpha = alpha
+                    drawImage()
+                    ctx.restore()
+                } else {
+                    drawImage()                    
+                }
             }
             function text(txt,xpx,ypx,color){
                 ctx.fillStyle = color||'white'
@@ -175,7 +215,8 @@
                     a:KEYBOARD[65]||goto.x<myx-erx,
                     s:KEYBOARD[83]||goto.y>myy+ery,
                     d:KEYBOARD[68]||goto.x>myx+erx,
-                    space:KEYBOARD[32]
+                    space:KEYBOARD[32],
+                    shift:KEYBOARD[16]
                 })
                 anykey=CState.w||CState.a||CState.s||CState.d||CState.space
                 
@@ -228,6 +269,26 @@
                 reader.readAsDataURL(file);
                 return false;
             };
+            
+            //Expects a and b to have x and y properties. determines if the xy of a is ±near of b.
+            //If a has .w and .h, those will be used to determine the hitbox, near may also be given.
+            function near(a,b,dist){
+                if(isNaN(a.x)||isNaN(a.y)||isNaN(b.x)||isNaN(b.y)){
+                    console.log("Bad comparison");
+                    return;
+                }
+                dist=isNaN(dist)?1:dist
+                if(
+                    a.x-(dist||0)<=b.x &&
+                    a.x+(dist||0)+(a.w||0)>=b.x && 
+                    a.y-(dist||0)<=b.y &&
+                    a.y+(dist||0)+(a.h||0)>=b.y
+                ) return true   
+            }
+            //random id
+            function grid(){      return ~~(Math.random()*(1<<24))         }
+            function bigrid(){    return grid()*grid()+''+grid()*grid()    }
+
         </script>
     </body>
 </html>

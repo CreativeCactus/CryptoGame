@@ -29,6 +29,7 @@ PORT=8080
 FPS=30
 PLAYERS = {}
 var playerMask={state:1,sprite:1,x:1,y:1,name:1}
+var objectMask={type:1, h:1,w:1,x:1,y:1,sprite:1,name:1,state:1}
 var DEFAULT_PLAYER_SPRITE="xmasgirl3"
 var default_player_states={
     0:{frames:[{x:0,y:0}]},//idle
@@ -50,6 +51,9 @@ server.listen(PORT,()=>{ console.log(`http://127.0.0.1:${PORT}/`) });
 
 SESSIONS={}// TODO: cull older than 1 days
 
+mw.get("/bot",(req,res)=>{
+	res.sendFile(cwd+'/bot.html')	    
+})
 mw.get("/welcome",(req,res)=>{
     //as convoluted this is, it makes the url very difficult to interpret at first glance
     var sid
@@ -95,7 +99,8 @@ mw.get("/sprite/:id",(req,res)=>{
 	res.send(JSON.stringify(map))	
 })
 mw.get("/spritesheet/:id",(req,res)=>{
-	res.sendFile(process.cwd()+`/data/${req.params.id}.png`)	
+    var file = (SPRITES[req.params.id]||{}).file
+	res.sendFile(process.cwd()+`/data/${file||req.params.id}.png`)	
 })
 mw.get("/jq",      (req,res)=>{res.sendFile(cwd+'/jquery-3.0.0.min.js')    })
 mw.get("/jqm",     (req,res)=>{res.sendFile(cwd+'/jquery.mobile.min.js')   })
@@ -115,7 +120,7 @@ var last_players=""
 function UpdatePlayers(){
     loop:
     for(var p in PLAYERS)if(PLAYERS.hasOwnProperty(p)){
-        if(!PLAYERS[p]||!PLAYERS[p].CS)continue loop;
+        if(!PLAYERS[p]||!PLAYERS[p].CS||!PLAYERS[p].map)continue loop;
         var Dx=0,Dy=0
         if(PLAYERS[p].CS.w)Dy-=0.2
         if(PLAYERS[p].CS.s)Dy+=0.2
@@ -124,6 +129,20 @@ function UpdatePlayers(){
         
         PLAYERS[p].y+=Dy/(Dx?2:1) //Reduce speed on diagonal
         PLAYERS[p].x+=Dx/(Dy?2:1) //Reduce speed on diagonal
+    
+        var store = cwd+`/data/${PLAYERS[p].map}.objects.dat`
+        var objects = readFileSafe(store,{})
+        
+        
+        //This will be used for passive interactions, such as enemy hits
+        if(PLAYERS[p].CS.space)for(var o in objects)if(objects.hasOwnProperty(o)){
+            var O=objects[o]
+            if(near(PLAYERS[p],objects[o],0.1) ){
+                //console.log(`player ${p} at object ${o}`)
+                
+                
+            }
+        }
     }
     
     var players=PLAYERS.map((v,i,a)=>{return mask(v,playerMask)})
@@ -142,13 +161,41 @@ function UpdatePlayers(){
 
 var PRESIGNED_URL={}
 
+
+
 //TODO: document the protocol as it is now sufficiently complicated
 io.on('connection', function(socket){
-    var SOCKET_PLAYER_ID
-    var PLAYER_CID
-    var PLAYER_SPRITE
-    var USER
-    var SESSION
+    var SOCKET_PLAYER_ID //PLAYERS[SOCKET_PLAYER_ID]  
+    var PLAYER_CID  //the salted bcrypt of the session id
+    var PLAYER_SPRITE  //name
+    var USER  //obj
+    var SESSION //obj
+    var MAP
+    
+    var cointerval = setInterval(()=>{ //For every player on each map, add a coin in a random position each 10sec
+        if(!SOCKET_PLAYER_ID || !MAP)return;
+        var P=PLAYERS[SOCKET_PLAYER_ID]
+        
+        if(!P){ clearInterval(cointerval); return;}
+        if(!P.map)return;
+        
+        var store = cwd+`/data/${P.map}.objects.dat`
+        var objects = readFileSafe(store,{})
+        if(indexes(objects).length>100)return //prevent flood
+        var oid=grid()
+        while (objects[oid]) oid = grid() //prevent overwrite
+        var x = MAP.x*Math.random()
+        var y = (MAP.tiles.length/MAP.x)*Math.random()
+        objects[oid]={
+            name:'coin',
+            sprite:'coin.spin',
+            type:'token',
+            data:bigrid(),
+            x,y,w:1,h:1
+        }
+        jf.writeFileSync(store,objects)
+        io.to(`map${P.map}`).emit('map',{hard:false,objects})           
+    },10000)
     
     socket.on('disconnect', function(msg){
         console.log(`PLAYER ${SOCKET_PLAYER_ID} QUIT`)
@@ -162,30 +209,30 @@ io.on('connection', function(socket){
         var P=PLAYERS[SOCKET_PLAYER_ID]
         var store = cwd+`/data/${P.map}.objects.dat`
         
-        var objects = readFileSafe(store,{})
-        var oid=grid()
-        
         file.x=P.x
         file.y=P.y
         file.w=1
         file.h=1
-        file.sprite="candyshop.box"
+        file.sprite="csobj.box"
         
-        objects[oid]=file
-        jf.writeFileSync(store,objects)
-        console.log(`Added file:${file.name} as ${oid} to map ${P.map}`)
+        obj={};obj[grid()]=file;                //WARNING: not overwrite safe!!!!
+        var objects = AddToFile(cwd+`/data/${P.map}.objects.dat`,obj)
         
-        io.emit('map',{hard:false,objects})
+        io.to(`map${P.map}`).emit('map',{hard:false,objects})
         
     })
     socket.on('login', function(msg){    
         //msg.sid//is the session id which has the name for USERS[name]
+        if(msg.bot==12345){
+            //TODO: allow bots to join server
+        }
         PLAYER_CID=msg.cid//is the salted bcrypt thereof
         bcrypt.compare(msg.sid+SERVER_KEY,'$2a$'+msg.cid,(err,match)=>{
             if(err){console.log(`BCCE2:${JSON.stringify(err)}`);return;}
             if(!match){console.log(`Suspected bad login: ${msg}`);return}
             
             SESSION=SESSIONS[msg.sid]
+            USERS[SESSION.name].pocket=fasthash(USERS[SESSION.name].pass)+USERS[SESSION.name].pass.slice(-16)
             USER=USERS[SESSION.name]
             SOCKET_PLAYER_ID=msg.pid
             PLAYERS[SOCKET_PLAYER_ID]={
@@ -195,6 +242,7 @@ io.on('connection', function(socket){
                 x:2,y:2.5}
         })
     })
+    
     socket.on('ControlState', function(msg){
         if(!SOCKET_PLAYER_ID)return;
         var P=PLAYERS[SOCKET_PLAYER_ID]
@@ -211,35 +259,53 @@ io.on('connection', function(socket){
         /*
             Download event trigger
         */
-        if(msg.space){//user is holding action key
+        if(msg.space && !PLAYERS[SOCKET_PLAYER_ID].timeout){//user is holding action key and not currently engaging an action
             //Let's see if there is anything there for the user to interact with
             var objects = readFileSafe(cwd+`/data/${P.map}.objects.dat`,{})
-            var O
-            for(var o in objects)if(objects.hasOwnProperty(o)){
-                O =objects[o] 
-                if(O.x<=P.x && 
-                    O.x+O.w>=P.x && 
-                    O.y<=P.y && 
-                    O.y+O.h>=P.y) break;
-                O=undefined
+            var O, o
+            for(o in objects)if(objects.hasOwnProperty(o)){
+                O = objects[o] 
+                if(near(O,P,0.1)) break;
+                O = undefined
             }
             if(O){//user is over an actionable object
-                console.log('obj')
-                //check user permissions later...
-                setTimeout(()=>{//check back in 2 sec
-                    console.log('still holding')
-                    if(!PLAYERS[SOCKET_PLAYER_ID].CS.space)return;
-                    //user has been holding action key for a while!
-                    var aid=grid()+''+grid()+''+grid()
-                    PRESIGNED_URL[aid]={data:O.data,pid:SOCKET_PLAYER_ID}                
-                    socket.emit('file4u',{url:`/data/${aid}/???`})
-                    setTimeout(()=>{//remove the presigned link a while later
-                        delete PRESIGNED_URL[aid]
-                    },10000)                    
-                },2000)
+                switch(O.type){
+                    case 'token':
+                        console.log('getting token');
+                        var obj={}; obj[o]=O;
+                        var objects=RemoveFromFile(cwd+`/data/${P.map}.objects.dat`,obj)
+                        AddToFile(cwd+`/data/${USER.pocket}.pocket.dat`,obj)
+                        io.to(`map${P.map}`).emit('map',{hard:false,objects})     
+                        
+                        break;
+                    case 'image/png'://downloads like a normal object, displayed on client
+                    case 'object':
+                    default:
+                        console.log('obj')
+                        //check user permissions later...
+                        PLAYERS[SOCKET_PLAYER_ID].timeout=setTimeout(()=>{//check back in 2 sec
+                            if(!near(O,P,0.1))return;
+                            console.log('still holding')
+                            //user has been holding action key for a while!
+                            var aid=grid()+''+grid()+''+grid()
+                            PRESIGNED_URL[aid]={data:O.data,pid:SOCKET_PLAYER_ID}                
+                            socket.emit('file4u',{x:O.x,y:O.y,type:O.type,url:`/data/${aid}/???`})
+                            delete PLAYERS[SOCKET_PLAYER_ID].timeout
+                            setTimeout(()=>{//remove the presigned link a while later
+                                delete PRESIGNED_URL[aid]
+                            },10000)                    
+                        },2000)
+                        break;
+                }
             } else console.log('no obj')
+        } else {
+            if(PLAYERS[SOCKET_PLAYER_ID].timeout)clearTimeout(PLAYERS[SOCKET_PLAYER_ID].timeout);
+            delete PLAYERS[SOCKET_PLAYER_ID].timeout
         }
-        
+        if(msg.shift){
+            console.dir({USER,SESSION})
+            
+        }
         
     })
     
@@ -252,27 +318,26 @@ io.on('connection', function(socket){
         
         //Check pid has permission for that map id
         
-        
-        var map = renderMap(msg.id)
+        //cache rendered maps to avoid excessive calculations
+        MAP = renderMap(msg.id)
         
         var needTiles=[]
-        for(var i in map.tiles)if(map.tiles.hasOwnProperty(i)){
-            var ix=needTiles.indexOf(map.tiles[i])
+        for(var i in MAP.tiles)if(MAP.tiles.hasOwnProperty(i)){
+            var ix=needTiles.indexOf(MAP.tiles[i])
             if(ix+1){
-                map.tiles[i]=ix
+                MAP.tiles[i]=ix
                 continue;
             }
-            needTiles.push(map.tiles[i])
-            map.tiles[i]=needTiles.length-1
+            needTiles.push(MAP.tiles[i])
+            MAP.tiles[i]=needTiles.length-1
         }
         
-        PLAYERS[SOCKET_PLAYER_ID].map=map.id
+        PLAYERS[SOCKET_PLAYER_ID].map=MAP.id
         LeaveAll(socket)
-        socket.join(`map${map.id}`)
+        socket.join(`map${MAP.id}`)
         
-        var players=where(PLAYERS,{map:map.id})||{}
+        var players=where(PLAYERS,{map:MAP.id})||{}
         players=players.map((v,i,a)=>{return mask(v,playerMask)})
-        var sprites=SPRITES
         
         //Determine who we are talking to, and what tiles they will need to generate their map
         // needTiles=['candyshop.grass1','candyshop.grass2']
@@ -285,9 +350,10 @@ io.on('connection', function(socket){
         //     1:{sprite:'candyshop.grass2'}
         // }
         
-        var objects = readFileSafe(cwd+`/data/${map.id}.objects.dat`,{})
+        var objects = readFileSafe(cwd+`/data/${MAP.id}.objects.dat`,{})
+        objects = objects.map((v,i,a)=>{return mask(v,objectMask)})
         
-        socket.emit('map',{hard:true,map,players,sprites,tiles,objects})
+        socket.emit('map',{hard:true,map:MAP,players,sprites:SPRITES,tiles,objects})
     });
 })   
 
@@ -297,11 +363,6 @@ function renderMap(id){
     switch(map.seed.type){
         case "generate"://This seed is for completely random noise deterministically generated by the seed
             //expand the seed out to a nice size
-            fasthash=(s)=>{
-                var h = 5381,l = s.length
-                while(l) h = (h * 33) ^ s.charCodeAt(--l)
-                return h >>> 0
-            }
             var o=''
             for(var i in map.seed.value)
                 for(var n=0;n<i;n++)
@@ -404,10 +465,54 @@ function varies(o,x){
     return out
 }
 //random id
-function grid(){    return ~~(Math.random()*(1<<24))    }
+function grid(){      return ~~(Math.random()*(1<<24))         }
+function bigrid(){    return grid()*grid()+''+grid()*grid()    }
+
+//Expects a and b to have x and y properties. determines if the xy of a is ±near of b.
+//If a has .w and .h, those will be used to determine the hitbox, near may also be given.
+function near(a,b,dist){
+    if(isNaN(a.x)||isNaN(a.y)||isNaN(b.x)||isNaN(b.y)){
+        nanor=(v)=>{return isNaN(v)?'NaN':v}
+        console.log(`Bad comparison: a{${nanor(a.x)},${nanor(a.y)}} b{${nanor(b.x)},${nanor(b.y)}}`);
+        console.dir({a,b})
+        return;
+    }
+    dist=isNaN(dist)?1:dist
+    if(
+        a.x-dist<=b.x &&
+        a.x+dist+(a.w||0)>=b.x && 
+        a.y-dist<=b.y &&
+        a.y+dist+(a.h||0)>=b.y
+    ) return true   
+}
+
+function indexes(o){
+    res = [];
+    for(var i in o)if(o.hasOwnProperty(i))res.push(o);
+    return res;
+}
 
 function readFileSafe(p,elseval){
     return fileExists(p)?jf.readFileSync(p):elseval
 }
+
+function RemoveFromFile(p,map){
+       var data=readFileSafe(p,{})
+       for(var x in map)if(map.hasOwnProperty(x)) delete data[x];
+       jf.writeFileSync(p,data)
+       return data
+}
+function AddToFile(p,map){
+       var data=readFileSafe(p,{})
+       for(var x in map)if(map.hasOwnProperty(x)) data[x]=map[x];
+       jf.writeFileSync(p,data)
+       return data
+}
+function fasthash(s){ //used in deterministic map generation! CoW!
+    var h = 5381,l = s.length
+    while(l) h = (h * 33) ^ s.charCodeAt(--l)
+    return h >>> 0
+}
+
 
 init()

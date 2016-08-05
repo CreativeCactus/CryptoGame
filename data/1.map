@@ -1,6 +1,10 @@
 {
     "id":1,
-    "seed":{"type":"generate","value":"ThisIsTheInitialMapThatYouWillSee000000001","tiles":["candyshop.tilewhite1","candyshop.tilewhite2","candyshop.tilewhite3"]},
+    "seed":{
+        "type":"generate",
+        "value":"ThisIsTheInitialMapThatYouWillSee000000001",
+        "tiles":["cs.tilewhite1","cs.tilewhite2","cs.tilewhite3"]
+    },
     "objects":[{}],
     "width":5,
     "startx":10,
