@@ -4,26 +4,45 @@
         <script src="/jq"></script>
     </head>
     <body style="position:relative;">
-        <canvas id="myCanvas" style="border:0px;"  oncontextmenu="return RClick()">
+        <canvas id="myCanvas" style="border:0px;">
             Your browser does not support the HTML5 canvas tag.
         </canvas>
         <script>
+            var cfg={
+                TRACKING_MODE:"Follow",
+                MOUSE_LOOK:true
+            }
+            document.oncontextmenu = function(e){
+                RClick(e)
+                stopEvent(e);
+                return false
+            }
+            function stopEvent(event){
+                if(event.preventDefault != undefined)
+                event.preventDefault();
+                if(event.stopPropagation != undefined)
+                event.stopPropagation();
+            }
             var sprite_scale=1.5, FPS=30,vframe=1;
             var TILES={},
             SPRITES={},//map[id]{S} where S.img, S.size.x, S.size.y
             BOARD={},//.tiles is array of all tiles on the board .x is the width in tiles
-            PLAYERS=[],
+            PLAYERS={},
             OBJECTS={},
-            PRIVATE={}
+            PRIVATE={},
+            BEAMS={}
             
             $("body").css("overflow", "hidden");
             var canvas = $("#myCanvas")[0];
-            var Font="30px Verdana";
             var socket = io();
             var MY_PLAYER_ID=~~(Math.random()*(1<<16))
-            var CLIENT={xoff:0,yoff:0,canvas}
+            var CLIENT={xoff:0,yoff:0,canvas,mxoff:0,myoff:0}
             
             var KEYBOARD = {}
+            $(window).mousemove(function(e){
+                KEYBOARD.mouseX=e.clientX
+                KEYBOARD.mouseY=e.clientY
+            });
             $(window).keydown(function(e){
                 KEYBOARD[e.keyCode]=1
                 delete KEYBOARD.goto
@@ -33,15 +52,38 @@
                 KEYBOARD.goto={x:CLIENT.xoff+e.clientX,y:CLIENT.yoff+e.clientY}
             })
             
-            function RClick(){
-                console.log("RC blocked");
-                KEYBOARD.goto={x:50,y:50}
+            function RClick(e){
+                var me=PLAYERS[MY_PLAYER_ID]
+                // console.log("RC blocked");
+                // KEYBOARD.goto={x:50,y:50}
+                if(KEYBOARD[16]){
+                    var bid=grid()
+                    BEAMS[bid]={
+                        alpha:1,
+                        a:{
+                            x:sprite_scale*(me.x*BOARD.xpx-3),
+                            y:sprite_scale*(me.y*BOARD.ypx-5)
+                        },
+                        b:{x:e.clientX+CLIENT.xoff,y:e.clientY+CLIENT.yoff}
+                    }
+                    return false;
+                }
+                if(PRIVATE['menu']){delete PRIVATE['menu']; return false;}
+                
+                /* Add a contextual menu */
+                var items=[]
+                for(var o in OBJECTS)if(OBJECTS.hasOwnProperty(o)){
+                    var O=OBJECTS[o]
+                    if(near(O,me,1))items.push(o+": This item has no actions")
+                }
+                
+                PRIVATE['menu']={x:10,y:10,type:"text",txt:items,fixed:true}
+                
                 return false;
             }
             function canvasResize(){
-                var can = $("#myCanvas")[0]
-                can.width = window.innerWidth;
-                can.height = window.innerHeight;
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
             }
             canvasResize()
             $(window).bind("resize", canvasResize);
@@ -51,10 +93,8 @@
             var ctx = canvas.getContext("2d");
             ctx.fillStyle="#FFFFFF";
             
-            socket.on('update', function(msg){
-                 PLAYERS=msg.players
-            });
-            
+            socket.on('update', function(msg){ PLAYERS=msg.players });
+            socket.on('f5', function(){    location.reload()   })
             socket.on('file4u', function(msg){
                 var url=msg.url.replace('???',MY_PLAYER_ID)
                 delete KEYBOARD[32]
@@ -103,7 +143,16 @@
                 //Draw Objects
                 for (var o in OBJECTS)if(OBJECTS.hasOwnProperty(o)){
                     var O=OBJECTS[o]
-                    draw(O.sprite,O.x*BOARD.xpx,O.y*BOARD.ypx)   
+                    switch(O.type){
+                        case "image":
+                            ctx.drawImage(O.img, O.x, O.y, 600, 600)
+                            break;
+                        case "text": 
+                            text(O.txt,O.x,O.y,undefined,1)   
+                            break;
+                        default:
+                            draw(O.sprite,O.x*BOARD.xpx,O.y*BOARD.ypx)   
+                    }
                 }
                 //Draw Private messages
                 for (var o in PRIVATE)if(PRIVATE.hasOwnProperty(o)){
@@ -112,9 +161,27 @@
                         case "image":
                             ctx.drawImage(O.img, O.x, O.y, 600, 600)
                             break;
+                        case "text": 
+                            (O.fixed?textf:text)(O.txt,O.x,O.y,undefined,1)   
+                            break;
+                        case "gui":
+                            break;
                         default:
                             draw(O.sprite,O.x*BOARD.xpx,O.y*BOARD.ypx)   
                     }
+                }
+                //Draw beams
+                for (var o in BEAMS)if(BEAMS.hasOwnProperty(o)){
+                    var O=BEAMS[o]
+                    ctx.save()
+                    ctx.globalAlpha = O.alpha
+                    ctx.beginPath();
+                    ctx.moveTo(O.a.x-CLIENT.xoff,O.a.y-CLIENT.yoff);
+                    ctx.lineTo(O.b.x-CLIENT.xoff,O.b.y-CLIENT.yoff);
+                    ctx.stroke();
+                    ctx.restore()
+                    BEAMS[o].alpha-=0.01
+                    if(BEAMS[o].alpha<=0)delete BEAMS[o]
                 }
                 //Draw Players
                 for (var p in PLAYERS)if(PLAYERS.hasOwnProperty(p)){
@@ -122,26 +189,43 @@
                     var alpha = p==MY_PLAYER_ID? //set the alpha of the player we are drawing
                         ( KEYBOARD[16]              ?0.6:1):    //if the player is me, it depends on SHIFT key
                         (!KEYBOARD[16]&&near(P,me,1)?0.5:1);    //if not me, it depends on proximity to me if im not SHIFTing
-                    draw(P.sprite,P.x*BOARD.xpx,P.y*BOARD.ypx,P.state,alpha)
-                    text((new Array(P.name.length+1)).join("█"),P.x*BOARD.xpx,P.y*BOARD.ypx,'black')   
-                    text(P.name,P.x*BOARD.xpx,P.y*BOARD.ypx)   
+                    draw(P.sprite,P.x*BOARD.xpx,P.y*BOARD.ypx,P.state,alpha) 
+                    text(P.name,P.x*BOARD.xpx,P.y*BOARD.ypx,undefined,1)   
                     if(p==MY_PLAYER_ID) text("┼",P.x*BOARD.xpx-3,P.y*BOARD.ypx-5,'lightgreen')   
                 }  
                 
                 //scrolling
+                var mid={x:window.innerWidth/2,y:window.innerHeight/2}
                 meX=me.x*BOARD.xpx*sprite_scale
                 meY=me.y*BOARD.ypx*sprite_scale
                 
-                //≥0 if we are OOB
-                OOBLeft =(CLIENT.xoff+100) - meX
-                OOBRight=meX - (window.innerWidth+CLIENT.xoff-100)
-                OOBUp   =(CLIENT.yoff+100) - meY
-                OOBDown =meY - (window.innerHeight+CLIENT.yoff-100)
-                
-                if(OOBLeft>0)CLIENT.xoff-=OOBLeft
-                if(OOBRight>0)CLIENT.xoff+=OOBRight
-                if(OOBUp>0)CLIENT.yoff-=OOBUp
-                if(OOBDown>0)CLIENT.yoff+=OOBDown
+                switch(cfg.TRACKING_MODE){
+                    case "Box":
+                        var OOBR=700
+                        
+                        //≥0 if we are OOB
+                        OOBLeft =(CLIENT.xoff+OOBR) - meX
+                        OOBRight=meX - (window.innerWidth+CLIENT.xoff-OOBR)
+                        OOBUp   =(CLIENT.yoff+OOBR) - meY
+                        OOBDown =meY - (window.innerHeight+CLIENT.yoff-OOBR)
+                        
+                        if(OOBLeft>0  )CLIENT.xoff-=OOBLeft
+                        if(OOBRight>0 )CLIENT.xoff+=OOBRight
+                        if(OOBUp>0    )CLIENT.yoff-=OOBUp
+                        if(OOBDown>0  )CLIENT.yoff+=OOBDown
+                        break;
+                    case "Follow":
+                    default:
+                        CLIENT.yoff=meY-mid.y
+                        CLIENT.xoff=meX-mid.x
+                        break;
+                }
+                if(cfg.MOUSE_LOOK){
+                    var cx=(KEYBOARD.mouseX-mid.x)*0.5
+                    var cy=(KEYBOARD.mouseY-mid.y)*0.5
+                    CLIENT.xoff+=cx
+                    CLIENT.yoff+=cy               
+                }
             }
             
             
@@ -153,6 +237,8 @@
                 SPRITES[name].img.src="spritesheet/"+name
             }
             
+            //Public function (for now) to request a map. Users can only access maps they have travelled to.
+            function PLAYER_GOTO(id){socket.emit('getmap',{id})}
             
             
             
@@ -188,13 +274,45 @@
                     drawImage()                    
                 }
             }
-            function text(txt,xpx,ypx,color){
-                ctx.fillStyle = color||'white'
-                ctx.fillText(txt, sprite_scale*xpx-CLIENT.xoff, sprite_scale*ypx-CLIENT.yoff); 
+            //draw text at fixed location - only supports strings now
+            function textf(txt,x,y,color,bg){
+                var yoff = 0
+                
+                if(Array.isArray(txt)){
+                    if(bg) textf(txt.map((v,i,a)=>{return v.replace(/./g,"█")}),x,y+yoff,'black',false)
+                    for(var t=0;t<txt.length;t++){
+                        textf(txt[t], x, y+yoff,color,bg)
+                        yoff+=11
+                    }
+                } else { 
+                    if(bg) textf(txt.replace(/./g,"█"),x,y,'black',false)
+                    ctx.fillStyle = color||'white'
+                    ctx.fillText(txt, x, y);
+                }
+            }
+            //draw a given array of lines or string  
+            function text(txt,xpx,ypx,color,bg){
+                var X=sprite_scale*xpx-CLIENT.xoff
+                var Y=sprite_scale*ypx-CLIENT.yoff
+                var yoff = 0
+                
+                if(Array.isArray(txt)){
+                    if(bg) text(txt.map((v,i,a)=>{return v.replace(/./g,"█")}),xpx,ypx+yoff,'black',false)
+                    for(var t=0;t<txt.length;t++){
+                        textf(txt[t], X, Y+yoff,color,bg)
+                        yoff+=11
+                    } 
+                } else { 
+                    if(bg) text(txt.replace(/./g,"█"),xpx,ypx,'black',false)
+                    textf(txt,X,Y,color,bg)
+                }
+                    
             }
             
             function init(){            
                 var urlid=location.href.split('=')[1].split('-')
+                ctx.font="10px Monospace"
+                PRIVATE['gui']={type:'gui',items:[]}
                 socket.emit('login', {pid:MY_PLAYER_ID,sid:urlid[0],cid:urlid[1]});
                 socket.emit('getmap',{id:1})
                 
@@ -274,15 +392,17 @@
             //If a has .w and .h, those will be used to determine the hitbox, near may also be given.
             function near(a,b,dist){
                 if(isNaN(a.x)||isNaN(a.y)||isNaN(b.x)||isNaN(b.y)){
-                    console.log("Bad comparison");
+                    nanor=(v)=>{return isNaN(v)?'NaN':v}
+                    console.log(`Bad comparison: a{${nanor(a.x)},${nanor(a.y)}} b{${nanor(b.x)},${nanor(b.y)}}`);
+                    console.dir({a,b})
                     return;
                 }
                 dist=isNaN(dist)?1:dist
                 if(
-                    a.x-(dist||0)<=b.x &&
-                    a.x+(dist||0)+(a.w||0)>=b.x && 
-                    a.y-(dist||0)<=b.y &&
-                    a.y+(dist||0)+(a.h||0)>=b.y
+                    a.x-dist<=b.x &&
+                    a.x+dist+(a.w||0)>=b.x && 
+                    a.y-dist<=b.y &&
+                    a.y+dist+(a.h||0)>=b.y
                 ) return true   
             }
             //random id

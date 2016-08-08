@@ -5,7 +5,6 @@
         "value":"ThisIsTheInitialMapThatYouWillSee000000001",
         "tiles":["cs.tilewhite1","cs.tilewhite2","cs.tilewhite3"]
     },
-    "objects":[{}],
     "width":5,
     "startx":10,
     "starty":10,

@@ -116,19 +116,31 @@ function mainloop(){
     UpdatePlayers()
 }
 
-var last_players=""
+var playerDelta={}
 function UpdatePlayers(){
     loop:
     for(var p in PLAYERS)if(PLAYERS.hasOwnProperty(p)){
         if(!PLAYERS[p]||!PLAYERS[p].CS||!PLAYERS[p].map)continue loop;
         var Dx=0,Dy=0
-        if(PLAYERS[p].CS.w)Dy-=0.2
-        if(PLAYERS[p].CS.s)Dy+=0.2
-        if(PLAYERS[p].CS.a)Dx-=0.2
-        if(PLAYERS[p].CS.d)Dx+=0.2
+        var CS=PLAYERS[p].CS
+        
+        var Speed=0.2, Decay=0.7
+        var WASD=mask(PLAYERS[p].CS,{w:1,a:1,s:1,d:1})
+        var CSD=WASD.map((v,i,a)=>{
+            var d=PLAYERS[p].CSDecay[i]//The decayed val for each btn
+            d=v?1:d*Decay
+            return (d<0.1)?0:d
+        })//Decay and cull any values too small
+        
+        if(CSD.w)Dy-=Speed*CSD.w
+        if(CSD.s)Dy+=Speed*CSD.s
+        if(CSD.a)Dx-=Speed*CSD.a
+        if(CSD.d)Dx+=Speed*CSD.d
         
         PLAYERS[p].y+=Dy/(Dx?2:1) //Reduce speed on diagonal
         PLAYERS[p].x+=Dx/(Dy?2:1) //Reduce speed on diagonal
+        console.dir(CSD)
+        PLAYERS[p].CSDecay=CSD    //Set the decaying control state
     
         var store = cwd+`/data/${PLAYERS[p].map}.objects.dat`
         var objects = readFileSafe(store,{})
@@ -149,13 +161,15 @@ function UpdatePlayers(){
     var maps = varies(PLAYERS,'map')
     for(var m in maps)if(maps.hasOwnProperty(m)){
         var LocalPlayers={}
-        maps[m].map((v,i,a)=>{var id=v._id;delete v._id; LocalPlayers[id]=v})
+        maps[m].map((v,i,a)=>{LocalPlayers[v]=players[v]})
         
-    }
-    var str_players=JSON.stringify(players)
-    if(str_players!=last_players){
-        io.emit("update",{players}) 
-        last_players= str_players
+        var str_players=JSON.stringify(LocalPlayers)
+        if(playerDelta[m]!=str_players){
+            io.sockets.in(`map${m}`).emit("update",{players:LocalPlayers||{}});
+
+            playerDelta[m]=str_players
+        }
+        
     }
 }
 
@@ -194,7 +208,7 @@ io.on('connection', function(socket){
             x,y,w:1,h:1
         }
         jf.writeFileSync(store,objects)
-        io.to(`map${P.map}`).emit('map',{hard:false,objects})           
+        io.sockets.in(`map${P.map}`).emit('map',{hard:false,objects})           
     },10000)
     
     socket.on('disconnect', function(msg){
@@ -218,7 +232,7 @@ io.on('connection', function(socket){
         obj={};obj[grid()]=file;                //WARNING: not overwrite safe!!!!
         var objects = AddToFile(cwd+`/data/${P.map}.objects.dat`,obj)
         
-        io.to(`map${P.map}`).emit('map',{hard:false,objects})
+        io.sockets.in(`map${P.map}`).emit('map',{hard:false,objects})
         
     })
     socket.on('login', function(msg){    
@@ -236,6 +250,7 @@ io.on('connection', function(socket){
             USER=USERS[SESSION.name]
             SOCKET_PLAYER_ID=msg.pid
             PLAYERS[SOCKET_PLAYER_ID]={
+                CS:{},CSDecay:{w:0,a:0,s:0,d:0},
                 sid:msg.sid,
                 name:SESSION.name,
                 sprite:USER.sprite||DEFAULT_PLAYER_SPRITE,
@@ -271,17 +286,48 @@ io.on('connection', function(socket){
             if(O){//user is over an actionable object
                 switch(O.type){
                     case 'token':
-                        console.log('getting token');
                         var obj={}; obj[o]=O;
                         var objects=RemoveFromFile(cwd+`/data/${P.map}.objects.dat`,obj)
                         AddToFile(cwd+`/data/${USER.pocket}.pocket.dat`,obj)
-                        io.to(`map${P.map}`).emit('map',{hard:false,objects})     
+                        console.dir({action:'toPocket',pid:USER.pocket,user:SESSION.name,obj})
+                        io.sockets.in(`map${P.map}`).emit('map',{hard:false,objects})     
                         
+                        break;
+                    case 'portal':
+                        //this is the map ID the door represents
+                        var mid='map'+o
+                        
+                        PLAYERS[SOCKET_PLAYER_ID].timeout=setTimeout(()=>{//check back in 2 sec
+                            if(!near(O,P,0.1))return;
+                            //this is the update we make to the player
+                            var upd={}
+                            upd[SESSION.name]={map:mid}
+                            UpdateFile(cwd+`/data/users.dat`,upd)
+                            
+                            //then we make sure the map exists 
+                            var p=cwd+`/data/${mid}.map`
+                            if(readFileSafe(p,0)==0){
+                                var mapdata={
+                                    "id":mid,
+                                    "seed":{
+                                        "type":"generate",
+                                        "value":O.data,
+                                        "tiles":["cs.tilewhite1","cs.tilewhite2","cs.tilewhite3"]
+                                    },
+                                    "width":5,
+                                    "startx":10,
+                                    "starty":10,
+                                    "xpx":32,
+                                    "ypx":32
+                                }        
+                                jf.writeFileSync(p,mapdata)               
+                            }
+                            GiveMap({id:mid})                                            
+                        },2000)
                         break;
                     case 'image/png'://downloads like a normal object, displayed on client
                     case 'object':
                     default:
-                        console.log('obj')
                         //check user permissions later...
                         PLAYERS[SOCKET_PLAYER_ID].timeout=setTimeout(()=>{//check back in 2 sec
                             if(!near(O,P,0.1))return;
@@ -313,10 +359,16 @@ io.on('connection', function(socket){
     //automatically populated with all the elements on the 
     //board, including players and npc
     /// Load the file defining the map itself
-    socket.on('getmap', function(msg){
+    var GiveMap=function(msg){
         if(!SOCKET_PLAYER_ID)return;
         
         //Check pid has permission for that map id
+        //...
+        
+        //Set user to that map
+        var upd={}
+        upd[SESSION.name]={map:msg.id}
+        UpdateFile(cwd+`/data/users.dat`,upd)
         
         //cache rendered maps to avoid excessive calculations
         MAP = renderMap(msg.id)
@@ -332,9 +384,10 @@ io.on('connection', function(socket){
             MAP.tiles[i]=needTiles.length-1
         }
         
-        PLAYERS[SOCKET_PLAYER_ID].map=MAP.id
+        socket.leave(`map${PLAYERS[SOCKET_PLAYER_ID].map}`)
         LeaveAll(socket)
         socket.join(`map${MAP.id}`)
+        PLAYERS[SOCKET_PLAYER_ID].map=MAP.id
         
         var players=where(PLAYERS,{map:MAP.id})||{}
         players=players.map((v,i,a)=>{return mask(v,playerMask)})
@@ -354,7 +407,8 @@ io.on('connection', function(socket){
         objects = objects.map((v,i,a)=>{return mask(v,objectMask)})
         
         socket.emit('map',{hard:true,map:MAP,players,sprites:SPRITES,tiles,objects})
-    });
+    }
+    socket.on('getmap', GiveMap);
 })   
 
 function renderMap(id){
@@ -454,13 +508,13 @@ Object.prototype.map=function(f){
     return o
 }
 //index an object or array by the value of a given x property
+//varies({a:m2,n3 b:n:7},'n')//3,7
 function varies(o,x){
     out={}
     o.map((v,i,a)=>{
-        v._id=i
-        var V=v[x]
+        var V=v[x] //the varying property of v is V
         if(!out[V])out[V]=[]
-        out[V].push(v)        
+        out[V].push(i) //out[V] is an array of indexes in o where o[i][x]==V
     })
     return out
 }
@@ -507,6 +561,28 @@ function AddToFile(p,map){
        for(var x in map)if(map.hasOwnProperty(x)) data[x]=map[x];
        jf.writeFileSync(p,data)
        return data
+}
+//Merges first level properties into file entries. 
+//For example, file holds {A:{z:1,y:2}}, input {A:{y:1,x:3},B:{}}
+//{A{z1,y1,x3}B{}}
+//TODO recursive using merge()
+function UpdateFile(p,map){
+       var data=readFileSafe(p,{})
+       for(var x in map)if(map.hasOwnProperty(x)){
+            if(typeof data[x] == "object" && (Array.isArray(map[x])==Array.isArray(data[x]))){
+                for(var y in map[x])
+                    if(map[x].hasOwnProperty(y))
+                        data[x][y]=map[x][y]
+            } else {
+                data[x]=map[x]
+            }
+       }
+       jf.writeFileSync(p,data)
+       return data
+}
+function merge(a,b,ctr){
+    
+    
 }
 function fasthash(s){ //used in deterministic map generation! CoW!
     var h = 5381,l = s.length
