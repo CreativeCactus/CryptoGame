@@ -1,5 +1,7 @@
 # CryptoGame
 
+<img src="https://raw.githubusercontent.com/CreativeCactus/Cryptogame/master/cryptogame.gif" alt="cap" style="height:500px; width:800px; right: 0px; position:absolute;"></img>
+
 <i>A 2D pixel world full of potential and easy-to-read json data files.</i>
 
 This project is in early stages, to simply get up to speed you can clone and 
