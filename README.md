@@ -6,11 +6,15 @@
 
 This project is in early stages, to simply get up to speed you can clone and 
 
-``` node client.js ```
+```
+	sudo npm install -g node-gyp node-pre-gyp # if need be - required for bcrypt
+	npm i
+	node client.js
+```
 
-and navigate to http://127.0.0.1:8080/ where you will be informally prompted to log in with
+and navigate to http://127.0.0.1:8080/ where you will be informally prompted to log in.
 
-<s>a password defined in client.js:33 (currently set to 'chu').</s>
+*If you encounter* `bcrypt_lib.node: failed to map segment from shared object` and manage to solve this bug, solutions welcome. It seems related to versioning.
 
 Upon logging in, if the account does not exist, the user will be directed to a signup page (work in progress).
 The data files included have an account 'name', with password 'pass'. 

@@ -1,0 +1,26 @@
+{
+  "name": "cryptogame",
+  "version": "1.0.0",
+  "description": "<img src=\"https://raw.githubusercontent.com/CreativeCactus/Cryptogame/master/cryptogame.gif\" alt=\"cap\" style=\"height:500px; width:800px; right: 0px; position:absolute;\"></img>",
+  "main": "client.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CreativeCactus/CryptoGame.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/CreativeCactus/CryptoGame/issues"
+  },
+  "homepage": "https://github.com/CreativeCactus/CryptoGame#readme",
+  "dependencies": {
+    "bcrypt": "^2.0.1",
+    "body-parser": "^1.18.2",
+    "express": "^4.16.3",
+    "jsonfile": "^4.0.0",
+    "socket.io": "^2.1.0"
+  }
+}
