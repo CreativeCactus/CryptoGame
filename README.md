@@ -14,12 +14,16 @@ This project is in early stages, to simply get up to speed you can clone and
 
 and navigate to http://127.0.0.1:8080/ where you will be informally prompted to log in.
 
-*If you encounter* `bcrypt_lib.node: failed to map segment from shared object` and manage to solve this bug, solutions welcome. It seems related to versioning.
-
 Upon logging in, if the account does not exist, the user will be directed to a signup page (work in progress).
 The data files included have an account 'name', with password 'pass'. 
 
-# Credits
+## Notes
+
+*If you encounter* `bcrypt_lib.node: failed to map segment from shared object` and manage to solve this bug, solutions welcome. It seems related to versioning.
+
+*Outdated CSS* for radial gradients is used on login page. Need to update and restyle.
+
+## Credits
 
 Sprites are all by Sithjester
 
